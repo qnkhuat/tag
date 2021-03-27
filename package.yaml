@@ -1,0 +1,31 @@
+name:                tag
+version:             0.1.0.0
+github:              "qnkhuat/tag"
+license:             BSD3
+author:              "Ngoc Khuat"
+maintainer:          "qn.khuat@gmail.com"
+copyright:           "2021 Ngoc Khuat"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+description: CLI tool to tag your files/folders
+
+dependencies:
+- base >= 4.7 && < 5
+- parsec >= 3.0 && <= 3.1.15
+- aeson >= 1.5 && <= 1.6
+
+executables:
+  tag:
+    main:                Main.hs
+    source-dirs:         ./
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
