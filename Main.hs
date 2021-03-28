@@ -69,28 +69,35 @@ data Command = CommandList {
     index :: Integer
 } | CommandHelp | CommandUnknown deriving (Show)
 
-data Colors = Red | Purple | Blue | Green | Yellow | Gray deriving (Enum, Show, Eq)
+--data Colors = Red | Purple | Blue | Green | Yellow | Gray deriving (Enum, Show, Eq)
 
 
 parseCommand :: [String] -> Command
--- parseCommand Nil = "List without color"
--- parseCommand (x)= "List without color"
--- `tag cp color|name index` -> copy to clipboard
---parseCommand ("cp" : color : path : [])  = "cp color: " ++ color ++ ", path: " ++ path
 parseCommand ("help":[])  = CommandHelp{}
 parseCommand ("cp" : color : path : [])  = CommandCp{color=color, path=path}
 parseCommand ("cd" : color : index: []) = CommandCd{color=color, index = (read index :: Integer)}
 parseCommand ("set" : color : name : []) = CommandSet{color=color, name=name}
 parseCommand ("rm" : color : index: []) = CommandRm{color=color, index = (read index :: Integer)}
 parseCommand (color:[]) = CommandList{color=color}
-parseCommand ([]) = CommandList{}
+parseCommand ([]) = CommandList{color=""}
 parseCommand _ = CommandUnknown{}
+
+
+run :: Command -> IO ()
+run command@(CommandHelp{}) = print command
+run command@(CommandList{}) = print command
+run command@(CommandCd{}) = print command
+run command@(CommandCp{}) = print command
+run command@(CommandSet{}) = print command
+run command@(CommandRm{}) = print command
+run command@(CommandUnknown{}) = print command
 
 main :: IO ()
 main = do
     args <- getArgs
-    print(parseCommand args)
-    --putStrLn Red == "Red"
+    print $ parseCommand args
+    --run CommandHelp{}
+    run $ parseCommand args 
 
 
 
