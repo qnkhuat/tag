@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -Wmissing-fields #-}
 module Main where
 -- https://williamyaoh.com/posts/2019-10-19-a-cheatsheet-to-json-handling.html
---{-# LANGUAGE DeriveGeneric #-}
 --
 --module Main where
 --
@@ -38,21 +39,34 @@ module Main where
 -- 
 -- main = callCommand "touch abc.txt"
 --
+--
+--
+
+-------------------------------------------------
+-- `tag [color|name]` => list all tags with color
+-- `tag color|name path(s)`-> add
+-- `tag cd color|name index` -> cd
+-- `tag cp color|name index` -> copy to clipboard
+-- `tag set color name` -> alias name to color
+-- `tag rm color|name path(s)` -> remove tag
+-- `tag help` -> Print help
+-------------------------------------------------
+
 import System.Environment (getArgs)
---import Prelude (putStrLn, list)
---import Prelude (IO, Show, FilePath, String, Integer, Enum)
-import Prelude
+import System.Directory (doesFileExist)
+import GHC.Generics (Generic)
 
+import Data.Aeson (ToJSON, FromJSON, encode, decode, eitherDecode')
+import Data.Map (Map, fromList)
+import qualified Data.Text  as T
+import qualified Data.Char as C
+import qualified Data.Map as Map
+import Data.Maybe (fromJust)
+import qualified Data.ByteString.Lazy as BS
 
-{-
-`tag [color|name]` => list all tags with color
-`tag color|name path(s)`-> add
-`tag cd color|name index` -> cd
-`tag cp color|name index` -> copy to clipboard
-`tag set color name` -> alias name to color
-`tag rm color|name path(s)` -> remove tag
-`tag help` -> Print help
--}
+-- ***** Data Types *****
+
+-- | Concept : Algebraic data types and Record Syntax
 data Command = CommandList {
     color :: String
 } | CommandCd {
@@ -69,9 +83,67 @@ data Command = CommandList {
     index :: Integer
 } | CommandHelp | CommandUnknown deriving (Show)
 
---data Colors = Red | Purple | Blue | Green | Yellow | Gray deriving (Enum, Show, Eq)
+data Tag = Tag {
+    tagPath :: String, 
+    time :: Int } 
+          deriving (Generic, Show)
+
+data Tags = Tags {
+    tagName :: String, 
+    tags :: [Tag] } 
+         deriving (Generic, Show)
+
+instance FromJSON Tag
+instance FromJSON Tags
+instance ToJSON Tag
+instance ToJSON Tags
+
+-- | Concept : Type synonyms
+type TagsData = Map String Tags 
+
+data Colors = Red | Purple | Blue | Green | Yellow | Gray deriving (Show, Read)
 
 
+-- ***** Constants *****
+
+colorsList :: [Colors]
+colorsList = [Red, Purple, Blue, Green, Yellow, Gray]
+
+-- | Concept : function application `$`
+tagTemplateData :: TagsData 
+tagTemplateData = Map.fromList(map makePair colorsList)
+    where makePair color = (lowerString $ show $ color, Tags{tagName="", tags=[]})
+
+-- ***** Utilities *****
+lowerString :: String -> String
+lowerString s = map C.toLower s
+
+-- ***** I/O *****
+writeJson :: TagsData -> FilePath -> IO ()
+writeJson d p = BS.writeFile p $ encode d
+
+decodeJson :: FilePath -> IO TagsData
+decodeJson p = do
+    b <- BS.readFile p
+    let jsonResult = fromJust $ decode b :: TagsData
+    return jsonResult
+
+readJson :: FilePath -> IO TagsData
+readJson p = do 
+    exists <- doesFileExist p
+    if exists then
+        decodeJson p
+    else
+       do
+           writeJson tagTemplateData p
+           return tagTemplateData
+
+
+
+
+
+-- ***** Parser *****
+-- | Concept : Pattern Matching
 parseCommand :: [String] -> Command
 parseCommand ("help":[])  = CommandHelp{}
 parseCommand ("cp" : color : path : [])  = CommandCp{color=color, path=path}
@@ -83,6 +155,7 @@ parseCommand ([]) = CommandList{color=""}
 parseCommand _ = CommandUnknown{}
 
 
+-- ***** Runner *****
 run :: Command -> IO ()
 run command@(CommandHelp{}) = print command
 run command@(CommandList{}) = print command
@@ -94,10 +167,21 @@ run command@(CommandUnknown{}) = print command
 
 main :: IO ()
 main = do
-    args <- getArgs
-    print $ parseCommand args
-    --run CommandHelp{}
-    run $ parseCommand args 
+    --print tagTemplateData
+    --putStrLn ("Yo")
+    --writeJson tagTemplateData "newtemplate.json"
+    ----putStrLn $ "Decode: " ++ (show (readJson "newtemplate.json"))
+    --a <- BS.readFile "newtemplate.json"
+    --putStrLn $ "Decode: " ++ (show (decode a :: Maybe TagsData))
+    d <- readJson "newtemplate.json"
+    putStrLn $ "Decode: " ++ show d
+
+    --BS.writeFile "newtemplate.json" (encode tagTemplateData)
+    --putStrLn  $ lookup "red" tagTemplateData
+    --args <- getArgs
+    --print $ parseCommand args
+    ----run CommandHelp{}
+    --run $ parseCommand args 
 
 
 

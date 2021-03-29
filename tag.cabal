@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d0fb49b8ef88566414aa8b61daeee2fca67adf297d5a970b45012b3c05640329
+-- hash: c100975a4b1257fb292ddda58848b844b0ee5e997028ddd8a4c6bc35ac661d82
 
 name:           tag
 version:        0.1.0.0
@@ -34,5 +34,9 @@ executable tag
   build-depends:
       aeson >=1.5 && <=1.6
     , base >=4.7 && <5
+    , bytestring
+    , containers
+    , directory
     , parsec >=3.0 && <=3.1.15
+    , text
   default-language: Haskell2010
