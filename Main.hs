@@ -1,47 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -Wmissing-fields #-}
-module Main where
 -- https://williamyaoh.com/posts/2019-10-19-a-cheatsheet-to-json-handling.html
---
---module Main where
---
---import GHC.Generics
---import Data.Text
---import Data.Aeson 
---import Data.Map (Map)
---import qualified Data.ByteString.Lazy as BS
---
---
---data Tag = Tag {
---    path :: Text, 
---    time :: Int } 
---          deriving (Generic, Show)
---
---data Tags = Tags {
---    name :: Text, 
---    tags :: [Tag] } 
---         deriving (Generic, Show)
---
---instance FromJSON Tag
---instance FromJSON Tags
---instance ToJSON Tag
---instance ToJSON Tags
---
---
---main :: IO ()
---main = do
---    a <- BS.readFile "template.json"
---    -- putStrLn $ "Decode: " ++ (show (decode a :: Maybe (Map Text Tags)))
---    BS.writeFile "newtemplate.json" (encode (decode a :: Maybe (Map Text Tags)))
-    
--- import System.Process
--- 
--- main = callCommand "touch abc.txt"
---
---
---
-
+module Main where
 -------------------------------------------------
 -- `tag [color|name]` => list all tags with color
 -- `tag color|name path(s)`-> add
@@ -59,6 +20,7 @@ import GHC.Generics (Generic)
 import Data.Aeson (ToJSON, FromJSON, encode, decode, eitherDecode')
 import Data.Map (Map, fromList)
 import Data.Maybe (fromJust, maybe)
+import Data.Ord (Ord)
 import qualified Data.Text  as T
 import qualified Data.Char as C
 import qualified Data.Map as Map
@@ -102,37 +64,65 @@ instance ToJSON Tags
 -- | Concept : Type synonyms
 type TagsData = Map String Tags 
 
-data Colors = Red | Purple | Blue | Green | Yellow | Gray deriving (Show, Read)
+data Color = Red | Purple | Blue | Green | Yellow | White deriving (Show, Read, Ord, Eq)
 
 
 -- ***** Constants *****
 
-colorsList :: [Colors]
-colorsList = [Red, Purple, Blue, Green, Yellow, Gray]
+colorsList :: [Color]
+colorsList = [Red, Purple, Blue, Green, Yellow, White] 
 
 -- | Concept : function application `$`
 tagTemplateData :: TagsData 
-tagTemplateData = Map.fromList(map makePair colorsList)
-    where makePair color = (lowerString $ show $ color, Tags{tagName="", tags=[]})
+tagTemplateData = Map.fromList(map makePair $ filter (\c -> c /= White) colorsList)
+    where makePair color = (lowerString $ show $ color, Tags{tagName=lowerString $ show $ color, tags=[]})
+
+
+colorANSIMap :: Map Color ANSI.Color
+colorANSIMap = Map.fromList [
+    (Red, ANSI.Red),
+    (Purple, ANSI.Magenta),
+    (Blue, ANSI.Blue),
+    (Green, ANSI.Green),
+    (Yellow, ANSI.Yellow),
+    (White, ANSI.White)]
+
+colorToANSI :: Color -> ANSI.Color
+colorToANSI c = case c of 
+                     Red -> ANSI.Red
+                     Purple -> ANSI.Magenta
+                     Blue -> ANSI.Blue
+                     Green -> ANSI.Green
+                     Yellow -> ANSI.Yellow
+                     White -> ANSI.White
 
 
 -- ***** Utilities *****
 lowerString :: String -> String
 lowerString s = map C.toLower s
+
+capitalizeString :: String -> String
+capitalizeString (s:xs) = (C.toUpper s):xs
         
-printTag :: Tag -> IO () 
-printTag tag = do 
+
+printTags :: String -> Tags -> IO ()
+printTags c ts = do
+    let tagColor = read (capitalizeString c) :: Color
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull (colorToANSI tagColor)]
+    putStrLn $ tagName ts
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]    
+    mapM_ printTag (zip [0..] (tags ts))
+
+
+printTag :: (Integer, Tag) -> IO () 
+printTag (i, tag) = do 
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.White]
-    -- putStr (name tag)
+    putStr $ show i
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Blue]    
     putStr "\t"
     putStr (tagPath tag)
     putStr "\n"
 
-printTags :: Tags -> IO ()
-printTags ts = do
-    putStr $ tagName ts
-    mapM_ printTag (tags ts)
 
 
 --printTagList :: [Tag] -> IO ()
@@ -180,7 +170,7 @@ run command@(CommandList{}) = do
     let c = color command    
     tagsData <- readJson "tag.json"
     let tagList = Map.lookup c tagsData
-    maybe (putStrLn "Tag not found") printTags tagList
+    maybe (putStrLn "Tag not found") (printTags c) $ tagList
     
 --apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func)
 --                        ($ args)
