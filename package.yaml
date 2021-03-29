@@ -23,7 +23,7 @@ dependencies:
 - containers
 - bytestring
 - directory
-
+- ansi-terminal
 executables:
   tag:
     main:                Main.hs

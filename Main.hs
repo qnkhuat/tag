@@ -58,11 +58,12 @@ import GHC.Generics (Generic)
 
 import Data.Aeson (ToJSON, FromJSON, encode, decode, eitherDecode')
 import Data.Map (Map, fromList)
+import Data.Maybe (fromJust, maybe)
 import qualified Data.Text  as T
 import qualified Data.Char as C
 import qualified Data.Map as Map
-import Data.Maybe (fromJust)
 import qualified Data.ByteString.Lazy as BS
+import qualified System.Console.ANSI as ANSI
 
 -- ***** Data Types *****
 
@@ -114,9 +115,28 @@ tagTemplateData :: TagsData
 tagTemplateData = Map.fromList(map makePair colorsList)
     where makePair color = (lowerString $ show $ color, Tags{tagName="", tags=[]})
 
+
 -- ***** Utilities *****
 lowerString :: String -> String
 lowerString s = map C.toLower s
+        
+printTag :: Tag -> IO () 
+printTag tag = do 
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.White]
+    -- putStr (name tag)
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Blue]    
+    putStr "\t"
+    putStr (tagPath tag)
+    putStr "\n"
+
+printTags :: Tags -> IO ()
+printTags ts = do
+    putStr $ tagName ts
+    mapM_ printTag (tags ts)
+
+
+--printTagList :: [Tag] -> IO ()
+--printTagList l = map printTag l
 
 -- ***** I/O *****
 writeJson :: TagsData -> FilePath -> IO ()
@@ -138,10 +158,6 @@ readJson p = do
            writeJson tagTemplateData p
            return tagTemplateData
 
-
-
-
-
 -- ***** Parser *****
 -- | Concept : Pattern Matching
 parseCommand :: [String] -> Command
@@ -155,10 +171,21 @@ parseCommand ([]) = CommandList{color=""}
 parseCommand _ = CommandUnknown{}
 
 
+
 -- ***** Runner *****
 run :: Command -> IO ()
 run command@(CommandHelp{}) = print command
-run command@(CommandList{}) = print command
+
+run command@(CommandList{}) = do
+    let c = color command    
+    tagsData <- readJson "tag.json"
+    let tagList = Map.lookup c tagsData
+    maybe (putStrLn "Tag not found") printTags tagList
+    
+--apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func)
+--                        ($ args)
+--                        (lookup func primitives)
+
 run command@(CommandCd{}) = print command
 run command@(CommandCp{}) = print command
 run command@(CommandSet{}) = print command
@@ -167,44 +194,11 @@ run command@(CommandUnknown{}) = print command
 
 main :: IO ()
 main = do
-    --print tagTemplateData
-    --putStrLn ("Yo")
-    --writeJson tagTemplateData "newtemplate.json"
-    ----putStrLn $ "Decode: " ++ (show (readJson "newtemplate.json"))
-    --a <- BS.readFile "newtemplate.json"
-    --putStrLn $ "Decode: " ++ (show (decode a :: Maybe TagsData))
-    d <- readJson "newtemplate.json"
-    putStrLn $ "Decode: " ++ show d
+    args <- getArgs
+    run $ parseCommand args
 
-    --BS.writeFile "newtemplate.json" (encode tagTemplateData)
-    --putStrLn  $ lookup "red" tagTemplateData
-    --args <- getArgs
-    --print $ parseCommand args
-    ----run CommandHelp{}
-    --run $ parseCommand args 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    --d <- readJson "newtemplate.json"
+    --putStrLn $ "Decode: " ++ show d
 
 
 

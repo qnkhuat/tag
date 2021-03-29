@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c100975a4b1257fb292ddda58848b844b0ee5e997028ddd8a4c6bc35ac661d82
+-- hash: 154c3c45437e4b81c3f38ea2d600d48e7eb009ae23450921f91770aa92a0c2fa
 
 name:           tag
 version:        0.1.0.0
@@ -33,6 +33,7 @@ executable tag
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson >=1.5 && <=1.6
+    , ansi-terminal
     , base >=4.7 && <5
     , bytestring
     , containers
