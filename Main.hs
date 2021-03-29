@@ -102,16 +102,17 @@ lowerString :: String -> String
 lowerString s = map C.toLower s
 
 capitalizeString :: String -> String
-capitalizeString (s:xs) = (C.toUpper s):xs
+capitalizeString (s:xs) = (C.toUpper s):(lowerString xs)
         
-
 printTags :: String -> Tags -> IO ()
 printTags c ts = do
     let tagColor = read (capitalizeString c) :: Color
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull (colorToANSI tagColor)]
     putStrLn $ tagName ts
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]    
-    mapM_ printTag (zip [0..] (tags ts))
+    let tagList = tags ts
+    case length tagList of 0 -> putStrLn "Empty"
+                           _ -> mapM_ printTag (zip [0..] tagList)
 
 
 printTag :: (Integer, Tag) -> IO () 
@@ -122,11 +123,6 @@ printTag (i, tag) = do
     putStr "\t"
     putStr (tagPath tag)
     putStr "\n"
-
-
-
---printTagList :: [Tag] -> IO ()
---printTagList l = map printTag l
 
 -- ***** I/O *****
 writeJson :: TagsData -> FilePath -> IO ()
@@ -160,8 +156,6 @@ parseCommand (color:[]) = CommandList{color=color}
 parseCommand ([]) = CommandList{color=""}
 parseCommand _ = CommandUnknown{}
 
-
-
 -- ***** Runner *****
 run :: Command -> IO ()
 run command@(CommandHelp{}) = print command
@@ -171,11 +165,8 @@ run command@(CommandList{}) = do
     tagsData <- readJson "tag.json"
     let tagList = Map.lookup c tagsData
     maybe (putStrLn "Tag not found") (printTags c) $ tagList
-    
---apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func)
---                        ($ args)
---                        (lookup func primitives)
 
+    
 run command@(CommandCd{}) = print command
 run command@(CommandCp{}) = print command
 run command@(CommandSet{}) = print command
