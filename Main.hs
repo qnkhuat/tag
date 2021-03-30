@@ -14,12 +14,14 @@ module Main where
 -------------------------------------------------
 
 import System.Environment (getArgs)
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, doesPathExist, makeAbsolute)
+import System.Exit (exitWith)
 import GHC.Generics (Generic)
 
+import Control.Monad.Except (throwError, catchError)
 import Text.Read (readMaybe)
-import Data.Aeson (ToJSON, FromJSON, encode, decode, eitherDecode')
-import Data.Map (Map, fromList)
+import Data.Aeson (ToJSON, FromJSON, encode, decode)
+import Data.Map (Map, fromList, insertWithKey, insert)
 import Data.Maybe (fromJust, maybe)
 import Data.Ord (Ord)
 import qualified Data.Text  as T
@@ -50,39 +52,39 @@ data Command = CommandAdd {
     index :: Integer
 } | CommandHelp | CommandUnknown deriving (Show)
 
-data Tag = Tag {
-    tagPath :: String, 
-    time :: Int } 
-          deriving (Generic, Show)
-
 data Tags = Tags {
     tagName :: String, 
-    tags :: [Tag] } 
+    paths :: [FilePath] } 
          deriving (Generic, Show)
 
-instance FromJSON Tag
+data TagError = NotFound String 
+              | Invalid String
+              deriving (Show)
+
 instance FromJSON Tags
-instance ToJSON Tag
 instance ToJSON Tags
 
 -- | Concept : Type synonyms
 type TagsData = Map String Tags 
+type ThrowsError = Either TagError
 
 data Color = Red | Purple | Blue | Green | Yellow | White deriving (Show, Read, Ord, Eq)
 
-
 -- ***** Constants *****
+
+tagFilePath :: FilePath
+tagFilePath = "tag.json"
 
 colorsList :: [Color]
 colorsList = [Red, Purple, Blue, Green, Yellow, White] 
+
 colorsNoWhite :: [Color]
 colorsNoWhite = filter (\c -> c /= White) colorsList
 
 -- | Concept : function application `$`
 tagTemplateData :: TagsData 
 tagTemplateData = Map.fromList(map makePair colorsNoWhite)
-    where makePair color = (lowerString $ show $ color, Tags{tagName=lowerString $ show $ color, tags=[]})
-
+    where makePair color = (lowerString $ show $ color, Tags{tagName=lowerString $ show $ color, paths=[]})
 
 colorANSIMap :: Map Color ANSI.Color
 colorANSIMap = Map.fromList [
@@ -115,18 +117,18 @@ printTags c ts = do
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull (colorToANSI c)]
     putStrLn $ tagName ts
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]    
-    let tagList = tags ts
+    let tagList = paths ts
     case length tagList of 0 -> putStrLn "There are no tags. Type `tag [color] [path] to add one!`"
                            _ -> mapM_ printTag (zip [0..] tagList)
 
 
-printTag :: (Integer, Tag) -> IO () 
+printTag :: (Integer, FilePath) -> IO () 
 printTag (i, tag) = do 
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.White]
     putStr $ show i
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Blue]    
     putStr "\t"
-    putStr (tagPath tag)
+    putStr tag
     putStr "\n"
 
 -- ***** I/O *****
@@ -136,7 +138,7 @@ writeJson d p = BS.writeFile p $ encode d
 decodeJson :: FilePath -> IO TagsData
 decodeJson p = do
     b <- BS.readFile p
-    let jsonResult = fromJust $ decode b :: TagsData
+    let jsonResult = fromJust $ decode b :: TagsData -- TODO :handle case failed to decode
     return jsonResult
 
 readJson :: FilePath -> IO TagsData
@@ -148,6 +150,22 @@ readJson p = do
        do
            writeJson tagTemplateData p
            return tagTemplateData
+
+insertTag :: FilePath -> Tags -> Tags
+insertTag filepath t = do
+    if filepath `elem` (paths t) 
+       then t
+       else Tags{tagName = (tagName t), paths = (paths t) ++ [filepath]}
+
+insertTags :: TagsData -> String -> FilePath -> TagsData
+insertTags tagsData key path = do
+    let currentTags = Map.lookup key tagsData
+    maybe tagsData (\x -> insert key (insertTag path x) tagsData) currentTags
+
+-- ***** Error Handling *****
+trapError action = catchError action (return . show)
+extractValue :: ThrowsError a -> a
+extractValue (Right val) = val
 
 -- ***** Parser *****
 -- | Concept : Pattern Matching
@@ -162,30 +180,45 @@ parseCommand (color : [])                = CommandLs{color = color}
 parseCommand ([])                        = CommandLs{color = ""}
 parseCommand _                           = CommandUnknown{}
 
-
+-- ***** Runner *****
 applyRunLs :: TagsData -> Color -> IO ()
 applyRunLs tagsData co = do
     let c = lowerString $ show co
     let tagList = Map.lookup c tagsData
-    maybe (putStrLn "Tag not found") (printTags co) $ tagList
+    maybe (putStrLn $ "Invalid tag: " ++ c) (printTags co) $ tagList
 
-
--- ***** Runner *****
 run :: Command -> IO ()
 run command@(CommandHelp{}) = print command
 
-
 run command@(CommandLs{}) = do
     let c = lowerString $ color command    
-    tagsData <- readJson "tag.json"
+    tagsData <- readJson tagFilePath
     if length c /= 0
        then do 
             let co = readMaybe (capitalizeString c) :: Maybe Color
-            maybe (putStrLn "Invalid tag") (applyRunLs tagsData) co
+            maybe (putStrLn $ "Invalid tag: " ++  c) (applyRunLs tagsData) co
         else mapM_ (applyRunLs tagsData) colorsNoWhite
-    
-run command@(CommandAdd{}) = print command
-    
+
+run command@(CommandAdd{}) = do -- print command
+    let n = lowerString $ name command
+    tagsData <- readJson tagFilePath
+    let tagList = Map.lookup n tagsData
+    case tagList of
+         Nothing -> putStrLn $ "Invalid tag: " ++ n
+         _ -> do
+             filepath <-  makeAbsolute $ path command
+             exist <- doesPathExist filepath
+             if exist
+                then do 
+                    writeJson (insertTags tagsData n filepath ) tagFilePath
+                    putStrLn "Done"
+                else putStrLn "Invalid path"
+
+    --maybe (putStrLn "Tag not found") (printTags co) $ tagList
+
+    --let co = readMaybe (capitalizeString c) :: Maybe Color
+    --maybe (putStrLn "Invalid tag") (applyRunLs tagsData) co
+
 run command@(CommandCd{}) = print command
 run command@(CommandCp{}) = print command
 run command@(CommandSet{}) = print command
@@ -196,11 +229,6 @@ main :: IO ()
 main = do
     args <- getArgs
     run $ parseCommand args
-
-    --d <- readJson "newtemplate.json"
-    --putStrLn $ "Decode: " ++ show d
-
-
 
 
 

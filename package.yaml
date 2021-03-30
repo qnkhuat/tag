@@ -24,6 +24,8 @@ dependencies:
 - bytestring
 - directory
 - ansi-terminal
+- mtl
+
 executables:
   tag:
     main:                Main.hs
