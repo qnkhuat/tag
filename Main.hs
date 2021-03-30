@@ -14,9 +14,9 @@ module Main where
 -------------------------------------------------
 
 import System.Environment (getArgs)
-import System.Directory (doesFileExist, doesPathExist, makeAbsolute)
-import System.Exit (exitWith)
 import System.Process (callCommand)
+import System.Directory (doesFileExist, doesPathExist, makeAbsolute, getHomeDirectory)
+import System.Exit (exitWith)
 import GHC.Generics (Generic) 
 
 import Control.Monad.Except (throwError, catchError)
@@ -73,8 +73,10 @@ data Color = Red | Purple | Blue | Green | Yellow | White deriving (Show, Read, 
 
 -- ***** Constants *****
 
-tagFilePath :: FilePath
-tagFilePath = "tag.json"
+getTagFilePath :: IO FilePath
+getTagFilePath = do
+    hd <- getHomeDirectory
+    return $ hd ++ "/.tag.json"
 
 colorsList :: [Color]
 colorsList = [Red, Purple, Blue, Green, Yellow, White] 
@@ -189,10 +191,10 @@ extractValue (Right val) = val
 -- | Concept : Pattern Matching
 parseCommand :: [String] -> Command
 parseCommand ("help": [])                = CommandHelp{}
-parseCommand (color : index : "cp"  : []) = CommandCp{color = color, index = (read index :: Int)}
-parseCommand (color : index : "cd"  : []) = CommandCd{color = color, index = (read index :: Int)}
-parseCommand (color : name  : "set" : []) = CommandSet{color = color, name = name}
-parseCommand (color : index : "rm"  : []) = CommandRm{color = color, index = (read index :: Int)}
+parseCommand (color : index : "cp" : []) = CommandCp{color = color, index = (read index :: Int)}
+parseCommand (color : index : "cd" : []) = CommandCd{color = color, index = (read index :: Int)}
+parseCommand (color : name  : "set": []) = CommandSet{color = color, name = name}
+parseCommand (color : index : "rm" : []) = CommandRm{color = color, index = (read index :: Int)}
 parseCommand (color : path  : [])        = CommandAdd{color = color, path = path}
 parseCommand (color : [])                = CommandLs{color = color}
 parseCommand ([])                        = CommandLs{color = ""}
@@ -210,6 +212,7 @@ run command@(CommandHelp{}) = print command
 
 run command@(CommandLs{}) = do
     let c = lowerString $ color command    
+    tagFilePath <- getTagFilePath
     tagsData <- readJson tagFilePath
     if length c /= 0
        then do 
@@ -219,6 +222,7 @@ run command@(CommandLs{}) = do
 
 run command@(CommandAdd{}) = do -- print command
     let c = lowerString $ color command
+    tagFilePath <- getTagFilePath
     tagsData <- readJson tagFilePath
     let tagList = Map.lookup c tagsData
     case tagList of
@@ -234,6 +238,7 @@ run command@(CommandAdd{}) = do -- print command
 
 run command@(CommandCd{}) = do
     let c = lowerString $ color command
+    tagFilePath <- getTagFilePath
     tagsData <- readJson tagFilePath
     let tagList = Map.lookup c tagsData
     case tagList of
@@ -242,11 +247,12 @@ run command@(CommandCd{}) = do
              let pathList = (paths $ fromJust tagList)
              let pathIndex = index command
              if length pathList >= pathIndex
-                then callCommand $ "cd " ++ (pathList !! pathIndex)
+                then callCommand $ "cd " ++ pathList !! pathIndex
                 else putStrLn $ "Index out of range for tag: " ++ c
              
 run command@(CommandCp{}) = do
     let c = lowerString $ color command
+    tagFilePath <- getTagFilePath
     tagsData <- readJson tagFilePath
     let tagList = Map.lookup c tagsData
     case tagList of
@@ -263,6 +269,7 @@ run command@(CommandCp{}) = do
 
 run command@(CommandRm{}) = do
     let c = lowerString $ color command
+    tagFilePath <- getTagFilePath
     tagsData <- readJson tagFilePath
     let tagList = Map.lookup c tagsData
     case tagList of
@@ -272,7 +279,6 @@ run command@(CommandRm{}) = do
              putStrLn $ "Removed!"
 
 run command@(CommandSet{}) = print command
-run command@(CommandRm{}) = print command
 run command@(CommandUnknown{}) = putStrLn "Unknown command!"
 
 main :: IO ()
