@@ -25,6 +25,7 @@ dependencies:
 - directory
 - ansi-terminal
 - mtl
+- process
 
 executables:
   tag:

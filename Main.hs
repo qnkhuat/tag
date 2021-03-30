@@ -16,7 +16,8 @@ module Main where
 import System.Environment (getArgs)
 import System.Directory (doesFileExist, doesPathExist, makeAbsolute)
 import System.Exit (exitWith)
-import GHC.Generics (Generic)
+import System.Process (callCommand)
+import GHC.Generics (Generic) 
 
 import Control.Monad.Except (throwError, catchError)
 import Text.Read (readMaybe)
@@ -30,26 +31,26 @@ import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as BS
 import qualified System.Console.ANSI as ANSI
 
--- ***** Data Types *****
 
+-- ***** Data Types *****
 -- | Concept : Algebraic data types and Record Syntax
 data Command = CommandAdd {
-    name :: String,
+    color :: String,
     path :: FilePath
 } | CommandLs {
     color :: String
 } | CommandCd {
     color :: String,
-    index :: Integer
+    index :: Int
 } | CommandCp {
     color :: String,
-    path :: FilePath
+    index :: Int
 } | CommandSet {
     color :: String,
     name :: String 
 } | CommandRm {
     color :: String,
-    index :: Integer
+    index :: Int
 } | CommandHelp | CommandUnknown deriving (Show)
 
 data Tags = Tags {
@@ -111,6 +112,10 @@ lowerString s = map C.toLower s
 
 capitalizeString :: String -> String
 capitalizeString (s:xs) = (C.toUpper s):(lowerString xs)
+
+deleteAt :: Int -> [a] -> [a]
+deleteAt idx xs = lft ++ rgt
+  where (lft, (_:rgt)) = splitAt idx xs
         
 printTags :: Color -> Tags -> IO ()
 printTags c ts = do
@@ -122,7 +127,7 @@ printTags c ts = do
                            _ -> mapM_ printTag (zip [0..] tagList)
 
 
-printTag :: (Integer, FilePath) -> IO () 
+printTag :: (Int, FilePath) -> IO () 
 printTag (i, tag) = do 
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.White]
     putStr $ show i
@@ -162,6 +167,19 @@ insertTags tagsData key path = do
     let currentTags = Map.lookup key tagsData
     maybe tagsData (\x -> insert key (insertTag path x) tagsData) currentTags
 
+
+removeTag :: Int -> Tags -> Tags
+removeTag i t = do
+    if length (paths t) <= i
+       then t
+       else Tags{tagName = (tagName t), paths = deleteAt i (paths t)}
+
+removeTags :: TagsData -> String -> Int -> TagsData
+removeTags tagsData key i = do
+    let currentTags = Map.lookup key tagsData
+    maybe tagsData (\x -> insert key (removeTag i x) tagsData) currentTags
+
+
 -- ***** Error Handling *****
 trapError action = catchError action (return . show)
 extractValue :: ThrowsError a -> a
@@ -171,11 +189,11 @@ extractValue (Right val) = val
 -- | Concept : Pattern Matching
 parseCommand :: [String] -> Command
 parseCommand ("help": [])                = CommandHelp{}
-parseCommand ("cp"  : color : path : []) = CommandCp{color = color, path = path}
-parseCommand ("cd"  : color : index: []) = CommandCd{color = color, index = (read index :: Integer)}
-parseCommand ("set" : color : name : []) = CommandSet{color = color, name = name}
-parseCommand ("rm"  : color : index: []) = CommandRm{color=color, index = (read index :: Integer)}
-parseCommand (name  : path  : [])        = CommandAdd{name = name, path = path}
+parseCommand (color : index : "cp"  : []) = CommandCp{color = color, index = (read index :: Int)}
+parseCommand (color : index : "cd"  : []) = CommandCd{color = color, index = (read index :: Int)}
+parseCommand (color : name  : "set" : []) = CommandSet{color = color, name = name}
+parseCommand (color : index : "rm"  : []) = CommandRm{color = color, index = (read index :: Int)}
+parseCommand (color : path  : [])        = CommandAdd{color = color, path = path}
 parseCommand (color : [])                = CommandLs{color = color}
 parseCommand ([])                        = CommandLs{color = ""}
 parseCommand _                           = CommandUnknown{}
@@ -200,30 +218,62 @@ run command@(CommandLs{}) = do
         else mapM_ (applyRunLs tagsData) colorsNoWhite
 
 run command@(CommandAdd{}) = do -- print command
-    let n = lowerString $ name command
+    let c = lowerString $ color command
     tagsData <- readJson tagFilePath
-    let tagList = Map.lookup n tagsData
+    let tagList = Map.lookup c tagsData
     case tagList of
-         Nothing -> putStrLn $ "Invalid tag: " ++ n
+         Nothing -> putStrLn $ "Invalid tag: " ++ c
          _ -> do
              filepath <-  makeAbsolute $ path command
              exist <- doesPathExist filepath
              if exist
                 then do 
-                    writeJson (insertTags tagsData n filepath ) tagFilePath
-                    putStrLn "Done"
+                    writeJson (insertTags tagsData c filepath ) tagFilePath
+                    putStrLn $ "Added " ++ filepath ++ " to tag " ++ c
                 else putStrLn "Invalid path"
 
-    --maybe (putStrLn "Tag not found") (printTags co) $ tagList
+run command@(CommandCd{}) = do
+    let c = lowerString $ color command
+    tagsData <- readJson tagFilePath
+    let tagList = Map.lookup c tagsData
+    case tagList of
+         Nothing -> putStrLn $ "Invalid tag: " ++ c
+         _ -> do
+             let pathList = (paths $ fromJust tagList)
+             let pathIndex = index command
+             if length pathList >= pathIndex
+                then callCommand $ "cd " ++ (pathList !! pathIndex)
+                else putStrLn $ "Index out of range for tag: " ++ c
+             
+run command@(CommandCp{}) = do
+    let c = lowerString $ color command
+    tagsData <- readJson tagFilePath
+    let tagList = Map.lookup c tagsData
+    case tagList of
+         Nothing -> putStrLn $ "Invalid tag: " ++ c
+         _ -> do
+             let pathList = (paths $ fromJust tagList)
+             let pathIndex = index command
+             if length pathList >= pathIndex
+                then do 
+                    callCommand $ "echo \"" ++ pathList !! pathIndex ++"\" | pbcopy"-- TODO : Only work on OSX
+                    putStrLn "Copied to your clipboard!"
+                else putStrLn $ "Index out of range for tag: " ++ c
 
-    --let co = readMaybe (capitalizeString c) :: Maybe Color
-    --maybe (putStrLn "Invalid tag") (applyRunLs tagsData) co
 
-run command@(CommandCd{}) = print command
-run command@(CommandCp{}) = print command
+run command@(CommandRm{}) = do
+    let c = lowerString $ color command
+    tagsData <- readJson tagFilePath
+    let tagList = Map.lookup c tagsData
+    case tagList of
+         Nothing -> putStrLn $ "Invalid tag: " ++ c
+         _ -> do
+             writeJson (removeTags tagsData c (index command)) tagFilePath -- TODO: warning when index out of range
+             putStrLn $ "Removed!"
+
 run command@(CommandSet{}) = print command
 run command@(CommandRm{}) = print command
-run command@(CommandUnknown{}) = print command
+run command@(CommandUnknown{}) = putStrLn "Unknown command!"
 
 main :: IO ()
 main = do
