@@ -17,6 +17,7 @@ import System.Environment (getArgs)
 import System.Directory (doesFileExist)
 import GHC.Generics (Generic)
 
+import Text.Read (readMaybe)
 import Data.Aeson (ToJSON, FromJSON, encode, decode, eitherDecode')
 import Data.Map (Map, fromList)
 import Data.Maybe (fromJust, maybe)
@@ -30,7 +31,10 @@ import qualified System.Console.ANSI as ANSI
 -- ***** Data Types *****
 
 -- | Concept : Algebraic data types and Record Syntax
-data Command = CommandList {
+data Command = CommandAdd {
+    name :: String,
+    path :: FilePath
+} | CommandLs {
     color :: String
 } | CommandCd {
     color :: String,
@@ -71,10 +75,12 @@ data Color = Red | Purple | Blue | Green | Yellow | White deriving (Show, Read, 
 
 colorsList :: [Color]
 colorsList = [Red, Purple, Blue, Green, Yellow, White] 
+colorsNoWhite :: [Color]
+colorsNoWhite = filter (\c -> c /= White) colorsList
 
 -- | Concept : function application `$`
 tagTemplateData :: TagsData 
-tagTemplateData = Map.fromList(map makePair $ filter (\c -> c /= White) colorsList)
+tagTemplateData = Map.fromList(map makePair colorsNoWhite)
     where makePair color = (lowerString $ show $ color, Tags{tagName=lowerString $ show $ color, tags=[]})
 
 
@@ -104,14 +110,13 @@ lowerString s = map C.toLower s
 capitalizeString :: String -> String
 capitalizeString (s:xs) = (C.toUpper s):(lowerString xs)
         
-printTags :: String -> Tags -> IO ()
+printTags :: Color -> Tags -> IO ()
 printTags c ts = do
-    let tagColor = read (capitalizeString c) :: Color
-    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull (colorToANSI tagColor)]
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Dull (colorToANSI c)]
     putStrLn $ tagName ts
     ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]    
     let tagList = tags ts
-    case length tagList of 0 -> putStrLn "Empty"
+    case length tagList of 0 -> putStrLn "There are no tags. Type `tag [color] [path] to add one!`"
                            _ -> mapM_ printTag (zip [0..] tagList)
 
 
@@ -147,25 +152,39 @@ readJson p = do
 -- ***** Parser *****
 -- | Concept : Pattern Matching
 parseCommand :: [String] -> Command
-parseCommand ("help":[])  = CommandHelp{}
-parseCommand ("cp" : color : path : [])  = CommandCp{color=color, path=path}
-parseCommand ("cd" : color : index: []) = CommandCd{color=color, index = (read index :: Integer)}
-parseCommand ("set" : color : name : []) = CommandSet{color=color, name=name}
-parseCommand ("rm" : color : index: []) = CommandRm{color=color, index = (read index :: Integer)}
-parseCommand (color:[]) = CommandList{color=color}
-parseCommand ([]) = CommandList{color=""}
-parseCommand _ = CommandUnknown{}
+parseCommand ("help": [])                = CommandHelp{}
+parseCommand ("cp"  : color : path : []) = CommandCp{color = color, path = path}
+parseCommand ("cd"  : color : index: []) = CommandCd{color = color, index = (read index :: Integer)}
+parseCommand ("set" : color : name : []) = CommandSet{color = color, name = name}
+parseCommand ("rm"  : color : index: []) = CommandRm{color=color, index = (read index :: Integer)}
+parseCommand (name  : path  : [])        = CommandAdd{name = name, path = path}
+parseCommand (color : [])                = CommandLs{color = color}
+parseCommand ([])                        = CommandLs{color = ""}
+parseCommand _                           = CommandUnknown{}
+
+
+applyRunLs :: TagsData -> Color -> IO ()
+applyRunLs tagsData co = do
+    let c = lowerString $ show co
+    let tagList = Map.lookup c tagsData
+    maybe (putStrLn "Tag not found") (printTags co) $ tagList
+
 
 -- ***** Runner *****
 run :: Command -> IO ()
 run command@(CommandHelp{}) = print command
 
-run command@(CommandList{}) = do
-    let c = color command    
-    tagsData <- readJson "tag.json"
-    let tagList = Map.lookup c tagsData
-    maybe (putStrLn "Tag not found") (printTags c) $ tagList
 
+run command@(CommandLs{}) = do
+    let c = lowerString $ color command    
+    tagsData <- readJson "tag.json"
+    if length c /= 0
+       then do 
+            let co = readMaybe (capitalizeString c) :: Maybe Color
+            maybe (putStrLn "Invalid tag") (applyRunLs tagsData) co
+        else mapM_ (applyRunLs tagsData) colorsNoWhite
+    
+run command@(CommandAdd{}) = print command
     
 run command@(CommandCd{}) = print command
 run command@(CommandCp{}) = print command
